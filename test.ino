@@ -49,7 +49,7 @@ String gps_double_to_aprs(double lat, double lng) {
 	double lngm = (lnga - lngd) * 60;
 	double lngh = (lngm - floor(lngm)) * 100;
 
-	char buffer[32];
+	char buffer[71];
 
 	// !5201.66N/00441.75E
 	// ddmm.hh
@@ -94,6 +94,7 @@ uint16_t make_ax25(uint8_t *const buffer, const String & text, const char *const
 uint8_t ax25_buffer[256];
 
 uint32_t last_tx = 0;
+uint32_t next_delay = 2500;
 
 void loop() {
 	uint32_t now = millis();
@@ -104,7 +105,7 @@ void loop() {
 		gps.encode(c);
 	}
 
-	if (now - last_tx >= 2500) {
+	if (now - last_tx >= next_delay) {
 		digitalWrite(LED_BUILTIN, LOW);
 
 		String aprs;
@@ -127,5 +128,6 @@ void loop() {
 		digitalWrite(LED_BUILTIN, HIGH);
 
 		last_tx = millis();
+		next_delay = 2000 + (rand() % 5000);
 	}
 }
