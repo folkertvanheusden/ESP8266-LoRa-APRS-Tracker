@@ -3,9 +3,20 @@
 #include <SoftwareSerial.h>
 #include <TinyGPS++.h>
 
-#define AX25_CALLSIGN_LEN 6
+// ----- change this (when required) -------
 
-constexpr uint8_t pinRX = D3, pinTX = D4;
+#define DST_CALLSIGN "APRS"
+#define SRC_CALLSIGN "PD9FVH"
+#define TEXT "www.vanheusden.com"
+
+constexpr uint8_t pinNSS = D8, pinRESET = D1, pinDIO0 = D2;
+
+constexpr uint32_t frequency = 433775000ll;
+
+constexpr uint8_t pinRX = D3, pinTX = D4;  // serial pins to the GPS
+
+// -----------------------------------------
+
 SoftwareSerial gpsSer(pinRX, pinTX);
 
 TinyGPSPlus gps;
@@ -17,9 +28,9 @@ void setup() {
 
 	pinMode(LED_BUILTIN, OUTPUT);
 
-	LoRa.setPins(D8, D1, D2);
+	LoRa.setPins(pinNSS, pinRESET, pinDIO0);
 
-	if (!LoRa.begin(433775000ll)) {
+	if (!LoRa.begin(frequency)) {
 		Serial.println("Starting LoRa failed!");
 		while (1) {
 		}
@@ -49,10 +60,7 @@ String gps_double_to_aprs(double lat, double lng) {
 	double lngm = (lnga - lngd) * 60;
 	double lngh = (lngm - floor(lngm)) * 100;
 
-	char buffer[71];
-
-	// !5201.66N/00441.75E
-	// ddmm.hh
+	static char buffer[71];
 
 	snprintf(buffer, sizeof buffer, "%02d%02d.%02d%c/%03d%02d.%02d%c",
 			int(latd), int(floor(latm)), int(floor(lath)), lat > 0 ? 'N' : 'S',
@@ -60,6 +68,8 @@ String gps_double_to_aprs(double lat, double lng) {
 
 	return buffer;
 }
+
+#define AX25_CALLSIGN_LEN 6
 
 void put_addr(uint8_t *const target, const char *const what, const byte ssid)
 {
@@ -77,7 +87,7 @@ void put_addr(uint8_t *const target, const char *const what, const byte ssid)
 
 uint16_t make_ax25(uint8_t *const buffer, const String & text, const char *const callsign)
 {
-	put_addr(&buffer[0], "APLG01", 0);
+	put_addr(&buffer[0], DST_CALLSIGN, 0);
 
 	put_addr(&buffer[7], callsign, 0);
 
@@ -91,10 +101,11 @@ uint16_t make_ax25(uint8_t *const buffer, const String & text, const char *const
 	return 16 + text_len;
 }
 
-uint8_t ax25_buffer[256];
+uint8_t tx_buffer[256];
 
 uint32_t last_tx = 0;
 uint32_t next_delay = 2500;
+bool mode = false;
 
 void loop() {
 	uint32_t now = millis();
@@ -108,26 +119,47 @@ void loop() {
 	if (now - last_tx >= next_delay) {
 		digitalWrite(LED_BUILTIN, LOW);
 
+		memset(tx_buffer, 0x00, sizeof tx_buffer);
+
 		String aprs;
 
-		if (gps.location.isValid())
-			aprs = "!" + gps_double_to_aprs(gps.location.lat(), gps.location.lng());
+		bool gps_updated = gps.location.isUpdated();
 
-		aprs += "[www.vanheusden.com";
+		Serial.print(F("GPS updated: "));
+		Serial.println(gps_updated);
+		Serial.print(F("GPS coordinates: "));
+		Serial.print(gps.location.lat());
+		Serial.print(',');
+		Serial.println(gps.location.lng());
 
-		uint16_t size = make_ax25(ax25_buffer, aprs, "PD9FVH");
+		if (gps_updated) // not gps.location.isValid()) ? TODO
+			aprs += "!" + gps_double_to_aprs(gps.location.lat(), gps.location.lng());
+
+		aprs += "[" TEXT;
+
+		uint16_t size = 0;
+
+		if (mode) {
+			size = make_ax25(tx_buffer, aprs, SRC_CALLSIGN);
+			next_delay = 2000 + (rand() % 5000);
+		}
+		else {
+			size = snprintf(reinterpret_cast<char *>(tx_buffer), sizeof tx_buffer, "\x3c\xff\x01%s>%s:%s", SRC_CALLSIGN, DST_CALLSIGN, aprs.c_str());
+			next_delay = 1000 + (rand() % 2000);
+		}
+
+		mode = !mode;
 
 		LoRa.beginPacket();
-		LoRa.write(ax25_buffer, size);
+		LoRa.write(tx_buffer, size);
 		LoRa.endPacket();
 
 		Serial.print(millis());
 		Serial.print(F(" transmitting: "));
-		Serial.println(aprs);
+		Serial.println(reinterpret_cast<char *>(tx_buffer));
 
 		digitalWrite(LED_BUILTIN, HIGH);
 
 		last_tx = millis();
-		next_delay = 2000 + (rand() % 5000);
 	}
 }
