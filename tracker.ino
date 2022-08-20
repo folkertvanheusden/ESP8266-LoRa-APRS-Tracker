@@ -162,4 +162,17 @@ void loop() {
 
 		last_tx = millis();
 	}
+
+	int packetSize = LoRa.parsePacket();
+
+	if (packetSize > 0) {
+		Serial.print(F("Received packet with RSSI "));
+		Serial.print(LoRa.packetRssi());
+		Serial.print(F(": "));
+
+		while(LoRa.available())
+			Serial.print(char(LoRa.read()));
+
+		Serial.println(F(""));
+	}
 }
