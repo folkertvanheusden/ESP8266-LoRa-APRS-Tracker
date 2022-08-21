@@ -6,7 +6,7 @@
 // ----- change this (when required) -------
 
 #define DST_CALLSIGN "APRS"
-#define SRC_CALLSIGN "PD9FVH"
+#define SRC_CALLSIGN "PD9FVH-2"
 #define TEXT "www.vanheusden.com"
 
 constexpr uint8_t pinNSS = D8, pinRESET = D1, pinDIO0 = D2;
@@ -14,6 +14,12 @@ constexpr uint8_t pinNSS = D8, pinRESET = D1, pinDIO0 = D2;
 constexpr uint32_t frequency = 433775000ll;
 
 constexpr uint8_t pinRX = D3, pinTX = D4;  // serial pins to the GPS
+
+constexpr uint32_t interval = 5000; // transmit every 5 seconds
+constexpr uint32_t interval_jitter = 2000; // ... + max. 2s
+
+constexpr uint32_t short_interval = 2500; // transmit 2nd packet (binary) after 2.5 seconds
+constexpr uint32_t short_interval_jitter = 5000; // ... + max. 5s
 
 // -----------------------------------------
 
@@ -141,11 +147,11 @@ void loop() {
 
 		if (mode) {
 			size = make_ax25(tx_buffer, aprs, SRC_CALLSIGN);
-			next_delay = 2000 + (rand() % 5000);
+			next_delay = interval + (rand() % interval_jitter);
 		}
 		else {
 			size = snprintf(reinterpret_cast<char *>(tx_buffer), sizeof tx_buffer, "\x3c\xff\x01%s>%s:%s", SRC_CALLSIGN, DST_CALLSIGN, aprs.c_str());
-			next_delay = 1000 + (rand() % 2000);
+			next_delay = short_interval + (rand() % short_interval_jitter);
 		}
 
 		mode = !mode;
