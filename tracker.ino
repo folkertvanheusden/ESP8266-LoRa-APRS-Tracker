@@ -32,7 +32,8 @@ TinyGPSPlus gps;
 void setup() {
 	Serial.begin(115200);
 
-	Serial.println("LoRa Sender");
+	Serial.println(F("LoRa tracker " __DATE__ " " __TIME__));
+	Serial.println(F("Written by Folkert van Heusden <mail@vanheusden.com>"));
 
 	pinMode(LED_BUILTIN, OUTPUT);
 
@@ -133,7 +134,8 @@ void loop() {
 
 	gps_updated |= (new_latitude != latitude && new_latitude != 0.) || (new_longitude != longitude && new_longitude != 0.);
 
-	digitalWrite(pinGPSFixLed, (now & 256) && gps_updated);
+	bool ledStatus = (now & 256) && gps_updated;
+	digitalWrite(pinGPSFixLed, ledStatus);
 
 	latitude  = new_latitude;
 	longitude = new_longitude;
@@ -178,6 +180,8 @@ void loop() {
 		Serial.println(reinterpret_cast<char *>(tx_buffer));
 
 		digitalWrite(LED_BUILTIN, HIGH);
+
+		digitalWrite(pinGPSFixLed, ledStatus);
 
 		last_tx = millis();
 	}
