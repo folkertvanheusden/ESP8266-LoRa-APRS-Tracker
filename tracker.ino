@@ -15,6 +15,8 @@ constexpr uint32_t frequency = 433775000ll;
 
 constexpr uint8_t pinRX = D3, pinTX = D4;  // serial pins to the GPS
 
+constexpr uint8_t pinGPSFixLed = D0;
+
 constexpr uint32_t interval = 5000; // transmit every 5 seconds
 constexpr uint32_t interval_jitter = 2000; // ... + max. 2s
 
@@ -34,7 +36,7 @@ void setup() {
 
 	pinMode(LED_BUILTIN, OUTPUT);
 
-	pinMode(D0, OUTPUT);
+	pinMode(pinGPSFixLed, OUTPUT);
 
 	LoRa.setPins(pinNSS, pinRESET, pinDIO0);
 
@@ -129,7 +131,9 @@ void loop() {
 	double new_latitude  = gps.location.lat();
 	double new_longitude = gps.location.lng();
 
-	gps_updated |= new_latitude != latitude || new_longitude != longitude;
+	gps_updated |= (new_latitude != latitude && new_latitude != 0.) || (new_longitude != longitude && new_longitude != 0.);
+
+	digitalWrite(pinGPSFixLed, (now & 256) && gps_updated);
 
 	latitude  = new_latitude;
 	longitude = new_longitude;
@@ -137,7 +141,7 @@ void loop() {
 	if (now - last_tx >= next_delay && gps_updated) {
 		gps_updated = false;
 
-		digitalWrite(D0, LOW);
+		digitalWrite(pinGPSFixLed, LOW);
 		digitalWrite(LED_BUILTIN, LOW);
 
 		memset(tx_buffer, 0x00, sizeof tx_buffer);
@@ -177,8 +181,6 @@ void loop() {
 
 		last_tx = millis();
 	}
-
-	digitalWrite(D0, (now & 256) && gps_updated);
 
 	int packetSize = LoRa.parsePacket();
 
