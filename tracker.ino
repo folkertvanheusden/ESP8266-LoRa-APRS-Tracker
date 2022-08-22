@@ -40,8 +40,8 @@ void setup() {
 
 	if (!LoRa.begin(frequency)) {
 		Serial.println("Starting LoRa failed!");
-		while (1) {
-		}
+
+		ESP.restart();
 	}
 
 	LoRa.setSpreadingFactor(12);
@@ -116,44 +116,39 @@ uint32_t next_delay = 2500;
 bool     mode = false;
 int      prev_gps_state = -1;
 
+double   latitude    = 0.;
+double   longitude   = 0.;
+bool     gps_updated = false;
+
 void loop() {
 	uint32_t now = millis();
 
 	while(gpsSer.available()) {
 		char c = gpsSer.read();
 
-		gps.encode(c);
+		if (gps.encode(c)) {
+			gps_updated = gps.location.isUpdated();
+
+			latitude    = gps.location.lat();
+			longitude   = gps.location.lng();
+		}
 	}
 
-	bool gps_updated = gps.location.isUpdated();
+	if (now - last_tx >= next_delay && gps_updated) {
+		gps_updated = false;
 
-	bool gps_valid = gps.location.isValid();
-
-	if (gps_valid != prev_gps_state) {
-		prev_gps_state = gps_valid;
-
-		if (gps_valid)
-			Serial.println(F("GPS state went to FIX"));
-		else
-			Serial.println(F("GPS state went to NO FIX"));
-	}
-
-	if (now - last_tx >= next_delay && gps_valid) {
 		digitalWrite(D0, LOW);
 		digitalWrite(LED_BUILTIN, LOW);
 
 		memset(tx_buffer, 0x00, sizeof tx_buffer);
 
-		Serial.print(F("GPS updated: "));
-		Serial.println(gps_updated);
 		Serial.print(F("GPS coordinates: "));
-		Serial.print(gps.location.lat());
-		Serial.print(',');
-
-		Serial.println(gps.location.lng());
+		Serial.print(latitude, 6);
+		Serial.print(F(", "));
+		Serial.println(longitude, 6);
 
 		String aprs;
-		aprs += "!" + gps_double_to_aprs(gps.location.lat(), gps.location.lng());
+		aprs += "!" + gps_double_to_aprs(latitude, longitude);
 
 		aprs += "[" TEXT;
 
@@ -183,7 +178,7 @@ void loop() {
 		last_tx = millis();
 	}
 
-	digitalWrite(D0, (now & 256) && (gps_valid | gps_updated));
+	digitalWrite(D0, (now & 256) && gps_updated);
 
 	int packetSize = LoRa.parsePacket();
 
