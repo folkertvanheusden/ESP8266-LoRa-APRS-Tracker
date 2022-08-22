@@ -36,8 +36,10 @@ void setup() {
 	Serial.println(F("Written by Folkert van Heusden <mail@vanheusden.com>"));
 
 	pinMode(LED_BUILTIN, OUTPUT);
+	digitalWrite(LED_BUILTIN, LOW);
 
 	pinMode(pinGPSFixLed, OUTPUT);
+	digitalWrite(pinGPSFixLed, HIGH);
 
 	LoRa.setPins(pinNSS, pinRESET, pinDIO0);
 
@@ -57,6 +59,9 @@ void setup() {
 	LoRa.setTxPower(20);
 
 	gpsSer.begin(9600);
+
+	digitalWrite(LED_BUILTIN, HIGH);
+	digitalWrite(pinGPSFixLed, LOW);
 
 	Serial.println(F("Go!"));
 }
