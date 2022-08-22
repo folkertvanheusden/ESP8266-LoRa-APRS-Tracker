@@ -109,11 +109,12 @@ uint16_t make_ax25(uint8_t *const buffer, const String & text, const char *const
 	return 16 + text_len;
 }
 
-uint8_t tx_buffer[256];
+uint8_t  tx_buffer[256];
 
 uint32_t last_tx = 0;
 uint32_t next_delay = 2500;
-bool mode = false;
+bool     mode = false;
+int      prev_gps_state = -1;
 
 void loop() {
 	uint32_t now = millis();
@@ -127,6 +128,15 @@ void loop() {
 	bool gps_updated = gps.location.isUpdated();
 
 	bool gps_valid = gps.location.isValid();
+
+	if (gps_valid != prev_gps_state) {
+		prev_gps_state = gps_valid;
+
+		if (gps_valid)
+			Serial.println(F("GPS state went to FIX"));
+		else
+			Serial.println(F("GPS state went to NO FIX"));
+	}
 
 	if (now - last_tx >= next_delay && gps_valid) {
 		digitalWrite(D0, LOW);
