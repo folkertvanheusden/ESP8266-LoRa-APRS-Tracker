@@ -127,10 +127,12 @@ void loop() {
 		char c = gpsSer.read();
 
 		if (gps.encode(c)) {
-			gps_updated = gps.location.isUpdated();
+			if (gps.location.isUpdated()) {
+				gps_updated = true;
 
-			latitude    = gps.location.lat();
-			longitude   = gps.location.lng();
+				latitude    = gps.location.lat();
+				longitude   = gps.location.lng();
+			}
 		}
 	}
 
