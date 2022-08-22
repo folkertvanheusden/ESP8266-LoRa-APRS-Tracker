@@ -128,9 +128,8 @@ void loop() {
 
 	bool gps_valid = gps.location.isValid();
 
-	digitalWrite(D0, (now & 512) && (gps_valid | gps_updated));
-
 	if (now - last_tx >= next_delay && gps_valid) {
+		digitalWrite(D0, LOW);
 		digitalWrite(LED_BUILTIN, LOW);
 
 		memset(tx_buffer, 0x00, sizeof tx_buffer);
@@ -173,6 +172,8 @@ void loop() {
 
 		last_tx = millis();
 	}
+
+	digitalWrite(D0, (now & 256) && (gps_valid | gps_updated));
 
 	int packetSize = LoRa.parsePacket();
 
