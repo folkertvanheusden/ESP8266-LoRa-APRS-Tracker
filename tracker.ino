@@ -34,6 +34,8 @@ void setup() {
 
 	pinMode(LED_BUILTIN, OUTPUT);
 
+	pinMode(D0, OUTPUT);
+
 	LoRa.setPins(pinNSS, pinRESET, pinDIO0);
 
 	if (!LoRa.begin(frequency)) {
@@ -122,24 +124,27 @@ void loop() {
 		gps.encode(c);
 	}
 
-	if (now - last_tx >= next_delay) {
+	bool gps_updated = gps.location.isUpdated();
+
+	bool gps_valid = gps.location.isValid();
+
+	digitalWrite(D0, (now & 512) && (gps_valid | gps_updated));
+
+	if (now - last_tx >= next_delay && gps_valid) {
 		digitalWrite(LED_BUILTIN, LOW);
 
 		memset(tx_buffer, 0x00, sizeof tx_buffer);
-
-		String aprs;
-
-		bool gps_updated = gps.location.isUpdated();
 
 		Serial.print(F("GPS updated: "));
 		Serial.println(gps_updated);
 		Serial.print(F("GPS coordinates: "));
 		Serial.print(gps.location.lat());
 		Serial.print(',');
+
 		Serial.println(gps.location.lng());
 
-		if (gps_updated) // not gps.location.isValid()) ? TODO
-			aprs += "!" + gps_double_to_aprs(gps.location.lat(), gps.location.lng());
+		String aprs;
+		aprs += "!" + gps_double_to_aprs(gps.location.lat(), gps.location.lng());
 
 		aprs += "[" TEXT;
 
