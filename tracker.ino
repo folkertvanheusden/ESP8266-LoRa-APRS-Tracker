@@ -123,18 +123,16 @@ bool     gps_updated = false;
 void loop() {
 	uint32_t now = millis();
 
-	while(gpsSer.available()) {
-		char c = gpsSer.read();
+	while(gpsSer.available())
+		gps.encode(gpsSer.read());
 
-		if (gps.encode(c)) {
-			if (gps.location.isUpdated()) {
-				gps_updated = true;
+	double new_latitude  = gps.location.lat();
+	double new_longitude = gps.location.lng();
 
-				latitude    = gps.location.lat();
-				longitude   = gps.location.lng();
-			}
-		}
-	}
+	gps_updated |= new_latitude != latitude || new_longitude != longitude;
+
+	latitude  = new_latitude;
+	longitude = new_longitude;
 
 	if (now - last_tx >= next_delay && gps_updated) {
 		gps_updated = false;
