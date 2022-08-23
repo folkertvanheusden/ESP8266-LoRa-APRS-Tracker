@@ -1,3 +1,4 @@
+#include <ESP8266TimerInterrupt.h>
 #include <SPI.h>
 #include <LoRa.h>
 #include <SoftwareSerial.h>
@@ -25,9 +26,17 @@ constexpr uint32_t short_interval_jitter = 5000; // ... + max. 5s
 
 // -----------------------------------------
 
+volatile bool ledStatus = false;
+
+ESP8266Timer ITimer;
+
 SoftwareSerial gpsSer(pinRX, pinTX);
 
 TinyGPSPlus gps;
+
+void IRAM_ATTR TimerHandler() {
+	digitalWrite(pinGPSFixLed, ledStatus);
+}
 
 void setup() {
 	Serial.begin(115200);
@@ -59,6 +68,8 @@ void setup() {
 	LoRa.setTxPower(20);
 
 	gpsSer.begin(9600);
+
+	ITimer.attachInterruptInterval(1000 * 250, TimerHandler);
 
 	digitalWrite(LED_BUILTIN, HIGH);
 	digitalWrite(pinGPSFixLed, LOW);
@@ -139,8 +150,7 @@ void loop() {
 
 	gps_updated |= (new_latitude != latitude && new_latitude != 0.) || (new_longitude != longitude && new_longitude != 0.);
 
-	bool ledStatus = (now & 256) && gps_updated;
-	digitalWrite(pinGPSFixLed, ledStatus);
+	ledStatus = (now & 256) && gps_updated;
 
 	latitude  = new_latitude;
 	longitude = new_longitude;
@@ -148,7 +158,6 @@ void loop() {
 	if (now - last_tx >= next_delay && gps_updated) {
 		gps_updated = false;
 
-		digitalWrite(pinGPSFixLed, LOW);
 		digitalWrite(LED_BUILTIN, LOW);
 
 		memset(tx_buffer, 0x00, sizeof tx_buffer);
@@ -185,8 +194,6 @@ void loop() {
 		Serial.println(reinterpret_cast<char *>(tx_buffer));
 
 		digitalWrite(LED_BUILTIN, HIGH);
-
-		digitalWrite(pinGPSFixLed, ledStatus);
 
 		last_tx = millis();
 	}
