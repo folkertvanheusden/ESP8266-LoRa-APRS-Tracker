@@ -44,6 +44,8 @@ void setup() {
 	Serial.println(F("LoRa tracker " __DATE__ " " __TIME__));
 	Serial.println(F("Written by Folkert van Heusden <mail@vanheusden.com>"));
 
+	Serial.println(F("Callsign: " SRC_CALLSIGN));
+
 	pinMode(LED_BUILTIN, OUTPUT);
 	digitalWrite(LED_BUILTIN, LOW);
 
@@ -156,9 +158,9 @@ void loop() {
 	longitude = new_longitude;
 
 	if (now - last_tx >= next_delay && gps_updated) {
-		gps_updated = false;
-
 		digitalWrite(LED_BUILTIN, LOW);
+
+		gps_updated = false;
 
 		memset(tx_buffer, 0x00, sizeof tx_buffer);
 
@@ -185,17 +187,21 @@ void loop() {
 
 		mode = !mode;
 
+		ITimer.stopTimer();
+
 		LoRa.beginPacket();
 		LoRa.write(tx_buffer, size);
 		LoRa.endPacket();
+
+		ITimer.restartTimer();
 
 		Serial.print(millis());
 		Serial.print(F(" transmitting: "));
 		Serial.println(reinterpret_cast<char *>(tx_buffer));
 
-		digitalWrite(LED_BUILTIN, HIGH);
-
 		last_tx = millis();
+
+		digitalWrite(LED_BUILTIN, HIGH);
 	}
 
 	int packetSize = LoRa.parsePacket();
