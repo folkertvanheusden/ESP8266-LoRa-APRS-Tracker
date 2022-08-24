@@ -137,9 +137,11 @@ uint32_t next_delay = 2500;
 bool     mode = false;
 int      prev_gps_state = -1;
 
-double   latitude    = 0.;
-double   longitude   = 0.;
-bool     gps_updated = false;
+double   latitude         = 0.;
+double   longitude        = 0.;
+bool     gps_updated      = false;
+bool     first_state_dump = true;
+bool     show_until_fix   = false;
 
 void loop() {
 	uint32_t now = millis();
@@ -152,13 +154,15 @@ void loop() {
 
 	gps_updated |= (new_latitude != latitude && new_latitude != 0.) || (new_longitude != longitude && new_longitude != 0.);
 
-	ledStatus = (now & 256) && gps_updated;
+	ledStatus = (!!(now & 512)) && gps_updated;
 
 	latitude  = new_latitude;
 	longitude = new_longitude;
 
 	if (now - last_tx >= next_delay && gps_updated) {
 		digitalWrite(LED_BUILTIN, LOW);
+
+		show_until_fix = first_state_dump = false;
 
 		gps_updated = false;
 
@@ -202,6 +206,40 @@ void loop() {
 		last_tx = millis();
 
 		digitalWrite(LED_BUILTIN, HIGH);
+	}
+
+	if (now > 60000 && (first_state_dump || show_until_fix)) {
+		digitalWrite(pinGPSFixLed, !!(millis() & 256));
+
+		if (first_state_dump) {
+			first_state_dump = false;
+
+			show_until_fix = true;
+		}
+
+		static int num_sat = -1, loc_valid = -1;
+
+		int cur_num_sat = gps.satellites.value();
+
+		if (cur_num_sat != num_sat) {
+			num_sat = cur_num_sat;
+
+			Serial.print(millis());
+			Serial.print(F(" number of satellites seen: "));
+			Serial.println(cur_num_sat);
+		}
+
+		int cur_loc_valid = gps.location.isValid();
+
+		if (cur_loc_valid != loc_valid) {
+			loc_valid = cur_loc_valid;
+
+			Serial.print(millis());
+			Serial.print(F(" position valid: "));
+			Serial.println(gps.location.isValid());
+		}
+
+		digitalWrite(pinGPSFixLed, LOW);
 	}
 
 	int packetSize = LoRa.parsePacket();
