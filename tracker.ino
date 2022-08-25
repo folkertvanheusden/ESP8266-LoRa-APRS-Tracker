@@ -77,6 +77,8 @@ void setup() {
 	digitalWrite(pinGPSFixLed, LOW);
 
 	Serial.println(F("Go!"));
+
+	Serial.print(F("> "));
 }
 
 String gps_double_to_aprs(double lat, double lng) {
@@ -100,8 +102,7 @@ String gps_double_to_aprs(double lat, double lng) {
 
 #define AX25_CALLSIGN_LEN 6
 
-void put_addr(uint8_t *const target, const char *const what, const byte ssid)
-{
+void put_addr(uint8_t *const target, const char *const what, const byte ssid) {
 	byte i   = 0;
 	byte len = strlen(what);
 
@@ -114,8 +115,7 @@ void put_addr(uint8_t *const target, const char *const what, const byte ssid)
 	target[6] = (('0' + ssid) << 1) | 1;
 }
 
-uint16_t make_ax25(uint8_t *const buffer, const String & text, const char *const callsign)
-{
+uint16_t make_ax25(uint8_t *const buffer, const String & text, const char *const callsign) {
 	put_addr(&buffer[0], DST_CALLSIGN, 0);
 
 	put_addr(&buffer[7], callsign, 0);
@@ -128,6 +128,39 @@ uint16_t make_ax25(uint8_t *const buffer, const String & text, const char *const
 	memcpy(&buffer[16], text.c_str(), text_len);
 
 	return 16 + text_len;
+}
+
+void emit_gps_stats(const bool force) {
+	static int num_sat = -1, loc_valid = -1;
+
+	int cur_num_sat = gps.satellites.value();
+
+	if (cur_num_sat != num_sat || force) {
+		num_sat = cur_num_sat;
+
+		Serial.print(millis());
+		Serial.print(F(" number of satellites seen: "));
+		Serial.println(cur_num_sat);
+	}
+
+	int cur_loc_valid = gps.location.isValid();
+
+	if (cur_loc_valid != loc_valid || force) {
+		loc_valid = cur_loc_valid;
+
+		Serial.print(millis());
+		Serial.print(F(" position valid: "));
+		Serial.println(gps.location.isValid());
+	}
+
+	if (force) {
+		double latitude  = gps.location.lat();
+		double longitude = gps.location.lng();
+
+		Serial.print(millis());
+		Serial.print(F(" position: "));
+		Serial.println(gps_double_to_aprs(latitude, longitude));
+	}
 }
 
 uint8_t  tx_buffer[256];
@@ -143,8 +176,69 @@ bool     gps_updated      = false;
 bool     first_state_dump = true;
 bool     show_until_fix   = false;
 
+bool     force_send       = false;
+
+char line[128] { 0 };
+int  line_pos { 0 };
+
+uint32_t msgs_transmitted = 0;
+uint32_t msgs_received    = 0;
+
+void emit_gen_stats() {
+	Serial.print(F("Number of messages transmitted: "));
+	Serial.println(msgs_transmitted);
+
+	Serial.print(F("Number of messages received: "));
+	Serial.println(msgs_received);
+
+	Serial.print(F("Uptime: "));
+	Serial.println(millis());
+}
+
+void process_command() {
+
+	if (strcmp(line, "stats") == 0) {
+		emit_gen_stats();
+		emit_gps_stats(true);
+	}
+	else if (strcmp(line, "force") == 0)
+		force_send = true;
+	else if (strcmp(line, "reboot") == 0)
+		ESP.restart();
+	else if (strcmp(line, "help") == 0)
+		Serial.println(F("force / reboot / stats"));
+	else {
+		Serial.println(F("?"));
+	}
+}
+
 void loop() {
 	uint32_t now = millis();
+
+	while(Serial.available()) {
+		int c = Serial.read();
+
+		Serial.print(char(c));
+
+		if ((c == 8 || c == 127) && line_pos > 0)
+			line_pos--;
+		else if (c == 13) {
+			line[line_pos] = 0x00;
+			line_pos = 0;
+
+			Serial.println(F(""));
+			
+			process_command();
+
+			Serial.println(F(""));
+			Serial.print(F("> "));
+		}
+		else if (c == 10)
+			continue;
+		else if (line_pos < sizeof(line) - 1) {
+			line[line_pos++] = c;
+		}
+	}
 
 	while(gpsSer.available())
 		gps.encode(gpsSer.read());
@@ -159,10 +253,15 @@ void loop() {
 	latitude  = new_latitude;
 	longitude = new_longitude;
 
-	if (now - last_tx >= next_delay && gps_updated) {
+	if ((now - last_tx >= next_delay && gps_updated) || force_send) {
 		digitalWrite(LED_BUILTIN, LOW);
 
+		if (show_until_fix)
+			emit_gps_stats(false);
+
 		show_until_fix = first_state_dump = false;
+
+		force_send  = false;
 
 		gps_updated = false;
 
@@ -193,6 +292,8 @@ void loop() {
 
 		ITimer.stopTimer();
 
+		msgs_transmitted++;
+
 		LoRa.beginPacket();
 		LoRa.write(tx_buffer, size);
 		LoRa.endPacket();
@@ -217,27 +318,7 @@ void loop() {
 			show_until_fix = true;
 		}
 
-		static int num_sat = -1, loc_valid = -1;
-
-		int cur_num_sat = gps.satellites.value();
-
-		if (cur_num_sat != num_sat) {
-			num_sat = cur_num_sat;
-
-			Serial.print(millis());
-			Serial.print(F(" number of satellites seen: "));
-			Serial.println(cur_num_sat);
-		}
-
-		int cur_loc_valid = gps.location.isValid();
-
-		if (cur_loc_valid != loc_valid) {
-			loc_valid = cur_loc_valid;
-
-			Serial.print(millis());
-			Serial.print(F(" position valid: "));
-			Serial.println(gps.location.isValid());
-		}
+		emit_gps_stats(false);
 
 		digitalWrite(pinGPSFixLed, LOW);
 	}
@@ -253,5 +334,7 @@ void loop() {
 			Serial.print(char(LoRa.read()));
 
 		Serial.println(F(""));
+
+		msgs_received++;
 	}
 }
