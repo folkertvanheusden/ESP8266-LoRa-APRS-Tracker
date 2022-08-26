@@ -175,6 +175,7 @@ double   longitude        = 0.;
 bool     gps_updated      = false;
 bool     first_state_dump = true;
 bool     show_until_fix   = false;
+int      p_validness      = -1;
 
 bool     force_send       = false;
 
@@ -183,6 +184,35 @@ int  line_pos { 0 };
 
 uint32_t msgs_transmitted = 0;
 uint32_t msgs_received    = 0;
+
+typedef struct {
+	uint32_t ts;
+	double   lat;
+	double   lng;
+        bool     fix;
+	uint8_t  n_sat;
+} history_t;
+
+std::vector<history_t> history;
+
+void emit_history() {
+	Serial.println(F("ts\tlat\tlng\tfix\t#sat"));
+
+	for(auto h : history) {
+		Serial.print(h.ts);
+		Serial.print('\t');
+		Serial.print(h.lat);
+		Serial.print('\t');
+		Serial.print(h.lng);
+		Serial.print('\t');
+		Serial.print(h.fix);
+		Serial.print('\t');
+		Serial.print(h.n_sat);
+		Serial.println(F(""));
+	}
+
+	Serial.println(F(""));
+}
 
 void emit_gen_stats() {
 	Serial.print(F("Number of messages transmitted: "));
@@ -203,10 +233,12 @@ void process_command() {
 	}
 	else if (strcmp(line, "force") == 0)
 		force_send = true;
+	else if (strcmp(line, "history") == 0)
+		emit_history();
 	else if (strcmp(line, "reboot") == 0)
 		ESP.restart();
 	else if (strcmp(line, "help") == 0)
-		Serial.println(F("force / reboot / stats"));
+		Serial.println(F("force / history / reboot / stats"));
 	else {
 		Serial.println(F("?"));
 	}
@@ -245,6 +277,22 @@ void loop() {
 
 	double new_latitude  = gps.location.lat();
 	double new_longitude = gps.location.lng();
+
+	if (new_latitude != latitude || new_longitude != longitude || gps.location.isValid() != p_validness) {
+		p_validness = gps.location.isValid();
+
+		history_t h;
+		h.ts    = millis();
+		h.lat   = new_latitude;
+		h.lng   = new_longitude;
+        	h.fix   = p_validness;
+		h.n_sat = gps.satellites.value();
+
+		history.push_back(h);
+
+		while(history.size() > 10)
+			history.erase(history.begin() + 0);
+	}
 
 	gps_updated |= (new_latitude != latitude && new_latitude != 0.) || (new_longitude != longitude && new_longitude != 0.);
 
@@ -326,7 +374,8 @@ void loop() {
 	int packetSize = LoRa.parsePacket();
 
 	if (packetSize > 0) {
-		Serial.print(F("Received packet with RSSI "));
+		Serial.print(millis());
+		Serial.print(F(" received packet with RSSI "));
 		Serial.print(LoRa.packetRssi());
 		Serial.print(F(": "));
 
