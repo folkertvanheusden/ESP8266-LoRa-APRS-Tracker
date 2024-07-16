@@ -185,6 +185,8 @@ int  line_pos { 0 };
 uint32_t msgs_transmitted = 0;
 uint32_t msgs_received    = 0;
 
+double   p_distance       = 0.;
+
 typedef struct {
 	uint32_t ts;
 	double   lat;
@@ -226,7 +228,6 @@ void emit_gen_stats() {
 }
 
 void process_command() {
-
 	if (strcmp(line, "stats") == 0) {
 		emit_gen_stats();
 		emit_gps_stats(true);
@@ -278,7 +279,12 @@ void loop() {
 	double new_latitude  = gps.location.lat();
 	double new_longitude = gps.location.lng();
 
-	if (new_latitude != latitude || new_longitude != longitude || gps.location.isValid() != p_validness) {
+	double distance      = TinyGPSPlus::distanceBetween(new_latitude, new_longitude, latitude, longitude);
+
+	// 25: gps resolution
+	if (int(distance / 25) != int(p_distance / 25) || gps.location.isValid() != p_validness) {
+		p_distance  = distance;
+
 		p_validness = gps.location.isValid();
 
 		history_t h;
