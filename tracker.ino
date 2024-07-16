@@ -16,7 +16,7 @@ constexpr uint32_t frequency = 433775000ll;
 
 constexpr uint8_t pinRX = D3, pinTX = D4;  // serial pins to the GPS
 
-constexpr uint8_t pinGPSFixLed = D0;
+constexpr uint8_t pin_LED_TX = D0;
 
 constexpr uint32_t interval = 5000; // transmit every 5 seconds
 constexpr uint32_t interval_jitter = 2000; // ... + max. 2s
@@ -28,15 +28,13 @@ constexpr uint32_t short_interval_jitter = 5000; // ... + max. 5s
 
 volatile bool ledStatus = false;
 
+bool monitor_gps = false;
+
 ESP8266Timer ITimer;
 
 SoftwareSerial gpsSer(pinRX, pinTX);
 
 TinyGPSPlus gps;
-
-void IRAM_ATTR TimerHandler() {
-	digitalWrite(pinGPSFixLed, ledStatus);
-}
 
 void setup() {
 	Serial.begin(115200);
@@ -49,8 +47,8 @@ void setup() {
 	pinMode(LED_BUILTIN, OUTPUT);
 	digitalWrite(LED_BUILTIN, LOW);
 
-	pinMode(pinGPSFixLed, OUTPUT);
-	digitalWrite(pinGPSFixLed, HIGH);
+	pinMode(pin_LED_TX, OUTPUT);
+	digitalWrite(pin_LED_TX, HIGH);
 
 	LoRa.setPins(pinNSS, pinRESET, pinDIO0);
 
@@ -71,10 +69,8 @@ void setup() {
 
 	gpsSer.begin(9600);
 
-	ITimer.attachInterruptInterval(1000 * 250, TimerHandler);
-
 	digitalWrite(LED_BUILTIN, HIGH);
-	digitalWrite(pinGPSFixLed, LOW);
+	digitalWrite(pin_LED_TX, LOW);
 
 	Serial.println(F("Go!"));
 
@@ -236,6 +232,8 @@ void process_command() {
 		force_send = true;
 	else if (strcmp(line, "history") == 0)
 		emit_history();
+	else if (strcmp(line, "mon") == 0)
+		monitor_gps = !monitor_gps;
 	else if (strcmp(line, "reboot") == 0)
 		ESP.restart();
 	else if (strcmp(line, "help") == 0)
@@ -273,8 +271,12 @@ void loop() {
 		}
 	}
 
-	while(gpsSer.available())
-		gps.encode(gpsSer.read());
+	while(gpsSer.available()) {
+		int c = gpsSer.read();
+		if (monitor_gps)
+			Serial.print(char(c));
+		gps.encode(c);
+	}
 
 	double new_latitude  = gps.location.lat();
 	double new_longitude = gps.location.lng();
@@ -308,7 +310,7 @@ void loop() {
 	longitude = new_longitude;
 
 	if ((now - last_tx >= next_delay && gps_updated) || force_send) {
-		digitalWrite(LED_BUILTIN, LOW);
+		digitalWrite(pin_LED_TX, HIGH);
 
 		if (show_until_fix)
 			emit_gps_stats(false);
@@ -360,11 +362,11 @@ void loop() {
 
 		last_tx = millis();
 
-		digitalWrite(LED_BUILTIN, HIGH);
+		digitalWrite(pin_LED_TX, LOW);
 	}
 
 	if (now > 60000 && (first_state_dump || show_until_fix)) {
-		digitalWrite(pinGPSFixLed, !!(millis() & 256));
+		digitalWrite(LED_BUILTIN, HIGH);
 
 		if (first_state_dump) {
 			first_state_dump = false;
@@ -374,12 +376,14 @@ void loop() {
 
 		emit_gps_stats(false);
 
-		digitalWrite(pinGPSFixLed, LOW);
+		digitalWrite(LED_BUILTIN, LOW);
 	}
 
 	int packetSize = LoRa.parsePacket();
 
 	if (packetSize > 0) {
+		digitalWrite(pin_LED_TX, !!(millis() & 256));
+
 		Serial.print(millis());
 		Serial.print(F(" received packet with RSSI "));
 		Serial.print(LoRa.packetRssi());
