@@ -29,6 +29,7 @@ constexpr uint32_t short_interval_jitter = 5000; // ... + max. 5s
 volatile bool ledStatus = false;
 
 bool monitor_gps = false;
+bool output      = false;
 
 ESP8266Timer ITimer;
 
@@ -234,10 +235,12 @@ void process_command() {
 		emit_history();
 	else if (strcmp(line, "mon") == 0)
 		monitor_gps = !monitor_gps;
+	else if (strcmp(line, "verbose") == 0 || strcmp(line, "output") == 0)
+		output = !output;
 	else if (strcmp(line, "reboot") == 0)
 		ESP.restart();
 	else if (strcmp(line, "help") == 0)
-		Serial.println(F("force / history / reboot / mon / stats"));
+		Serial.println(F("force / history / reboot / mon / verbose / stats"));
 	else {
 		Serial.println(F("?"));
 	}
@@ -249,7 +252,8 @@ void loop() {
 	while(Serial.available()) {
 		int c = Serial.read();
 
-		Serial.print(char(c));
+    if (output)
+      Serial.print(char(c));
 
 		if ((c == 8 || c == 127) && line_pos > 0)
 			line_pos--;
@@ -257,12 +261,15 @@ void loop() {
 			line[line_pos] = 0x00;
 			line_pos = 0;
 
-			Serial.println(F(""));
+      if (output)
+        Serial.println(F(""));
 			
 			process_command();
 
-			Serial.println(F(""));
-			Serial.print(F("> "));
+      if (output) {
+        Serial.println(F(""));
+        Serial.print(F("> "));
+      }
 		}
 		else if (c == 10)
 			continue;
@@ -302,17 +309,18 @@ void loop() {
 
 		memset(tx_buffer, 0x00, sizeof tx_buffer);
 
-		Serial.print(F("GPS coordinates: "));
-		Serial.print(latitude, 6);
-		Serial.print(F(", "));
-		Serial.print(longitude, 6);
-		Serial.print(F(", distance since last transmission: "));
-		Serial.print(distance);
-		Serial.println(F(" meter"));
+    if (output) {
+      Serial.print(F("GPS coordinates: "));
+      Serial.print(latitude, 6);
+      Serial.print(F(", "));
+      Serial.print(longitude, 6);
+      Serial.print(F(", distance since last transmission: "));
+      Serial.print(distance);
+      Serial.println(F(" meter"));
+    }
 
 		String aprs;
 		aprs += "!" + gps_double_to_aprs(latitude, longitude);
-
 		aprs += "[" TEXT;
 
 		uint16_t size = 0;
@@ -338,9 +346,11 @@ void loop() {
 
 		ITimer.restartTimer();
 
-		Serial.print(millis());
-		Serial.print(F(" transmitting: "));
-		Serial.println(reinterpret_cast<char *>(tx_buffer));
+    if (output) {
+      Serial.print(millis());
+      Serial.print(F(" transmitting: "));
+      Serial.println(reinterpret_cast<char *>(tx_buffer));
+    }
 
 		last_tx = millis();
 
@@ -365,19 +375,20 @@ void loop() {
 	}
 
 	int packetSize = LoRa.parsePacket();
-
 	if (packetSize > 0) {
 		digitalWrite(pin_LED_TX, !!(millis() & 256));
 
-		Serial.print(millis());
-		Serial.print(F(" received packet with RSSI "));
-		Serial.print(LoRa.packetRssi());
-		Serial.print(F(": "));
+    if (output) {
+      Serial.print(millis());
+      Serial.print(F(" received packet with RSSI "));
+      Serial.print(LoRa.packetRssi());
+      Serial.print(F(": "));
 
-		while(LoRa.available())
-			Serial.print(char(LoRa.read()));
+      while(LoRa.available())
+        Serial.print(char(LoRa.read()));
 
-		Serial.println(F(""));
+      Serial.println(F(""));
+    }
 
 		msgs_received++;
 	}
