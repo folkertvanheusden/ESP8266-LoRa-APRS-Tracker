@@ -8,7 +8,7 @@
 
 #define DST_CALLSIGN "APRS"
 #define SRC_CALLSIGN "PD9FVH-2"
-#define TEXT "www.vanheusden.com"
+#define TEXT "www.vanheusden.com - folkert@vanheusden.com"
 
 constexpr uint8_t pinNSS = D8, pinRESET = D1, pinDIO0 = D2;
 
@@ -161,10 +161,10 @@ void emit_gps_stats(const bool force) {
 
 uint8_t  tx_buffer[256];
 
-uint32_t last_tx = 0;
-uint32_t next_delay = 2500;
-bool     mode = false;
-int      prev_gps_state = -1;
+uint32_t last_tx          = 0;
+uint32_t next_delay       = 2500;
+bool     mode             = false;
+int      prev_gps_state   = -1;
 
 double   latitude         = 0.;
 double   longitude        = 0.;
@@ -176,7 +176,7 @@ int      p_validness      = -1;
 bool     force_send       = false;
 
 char line[128] { 0 };
-int  line_pos { 0 };
+int  line_pos  { 0 };
 
 uint32_t msgs_transmitted = 0;
 uint32_t msgs_received    = 0;
@@ -187,7 +187,7 @@ typedef struct {
 	uint32_t ts;
 	double   lat;
 	double   lng;
-        bool     fix;
+  bool     fix;
 	uint8_t  n_sat;
 } history_t;
 
@@ -237,7 +237,7 @@ void process_command() {
 	else if (strcmp(line, "reboot") == 0)
 		ESP.restart();
 	else if (strcmp(line, "help") == 0)
-		Serial.println(F("force / history / reboot / stats"));
+		Serial.println(F("force / history / reboot / mon / stats"));
 	else {
 		Serial.println(F("?"));
 	}
@@ -283,33 +283,12 @@ void loop() {
 
 	double distance      = TinyGPSPlus::distanceBetween(new_latitude, new_longitude, latitude, longitude);
 
-	// 25: gps resolution
-	if (int(distance / 25) != int(p_distance / 25) || gps.location.isValid() != p_validness) {
-		p_distance  = distance;
-
-		p_validness = gps.location.isValid();
-
-		history_t h;
-		h.ts    = millis();
-		h.lat   = new_latitude;
-		h.lng   = new_longitude;
-        	h.fix   = p_validness;
-		h.n_sat = gps.satellites.value();
-
-		history.push_back(h);
-
-		while(history.size() > 10)
-			history.erase(history.begin() + 0);
-	}
-
 	gps_updated |= (new_latitude != latitude && new_latitude != 0.) || (new_longitude != longitude && new_longitude != 0.);
 
 	ledStatus = (!!(now & 512)) && gps_updated;
 
-	latitude  = new_latitude;
-	longitude = new_longitude;
-
-	if ((now - last_tx >= next_delay && gps_updated) || force_send) {
+	//if ((now - last_tx >= next_delay && gps_updated) || force_send) {
+	if (now - last_tx >= next_delay || force_send || distance >= 25 /* 25 meter */) {
 		digitalWrite(pin_LED_TX, HIGH);
 
 		if (show_until_fix)
@@ -326,7 +305,10 @@ void loop() {
 		Serial.print(F("GPS coordinates: "));
 		Serial.print(latitude, 6);
 		Serial.print(F(", "));
-		Serial.println(longitude, 6);
+		Serial.print(longitude, 6);
+		Serial.print(F(", distance since last transmission: "));
+		Serial.print(distance);
+		Serial.println(F(" meter"));
 
 		String aprs;
 		aprs += "!" + gps_double_to_aprs(latitude, longitude);
@@ -363,6 +345,9 @@ void loop() {
 		last_tx = millis();
 
 		digitalWrite(pin_LED_TX, LOW);
+
+    latitude  = new_latitude;
+    longitude = new_longitude;
 	}
 
 	if (now > 60000 && (first_state_dump || show_until_fix)) {
@@ -395,5 +380,24 @@ void loop() {
 		Serial.println(F(""));
 
 		msgs_received++;
+	}
+
+	// 25: gps resolution
+	if (int(distance / 25) != int(p_distance / 25) || gps.location.isValid() != p_validness) {
+		p_distance  = distance;
+
+		p_validness = gps.location.isValid();
+
+		history_t h;
+		h.ts    = millis();
+		h.lat   = new_latitude;
+		h.lng   = new_longitude;
+   	h.fix   = p_validness;
+		h.n_sat = gps.satellites.value();
+
+		history.push_back(h);
+
+		while(history.size() > 10)
+			history.erase(history.begin() + 0);
 	}
 }
